@@ -608,6 +608,31 @@
             opacity: 1;
         }
 
+        /* Live cursors */
+        .remote-cursor {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1000;
+            transition: transform 0.1s ease-out;
+        }
+
+        .remote-cursor svg {
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+        }
+
+        .remote-cursor-label {
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sidebar {
@@ -676,6 +701,13 @@
                     </div>
                 </div>
                 <div class="tools" style="margin-top: 8px;">
+                    <div class="tool-btn" id="textTool" onclick="selectTool('text')" title="Text">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 7 4 4 20 4 20 7"/>
+                            <line x1="9" y1="20" x2="15" y2="20"/>
+                            <line x1="12" y1="4" x2="12" y2="20"/>
+                        </svg>
+                    </div>
                     <div class="tool-btn" id="sprayTool" onclick="selectTool('spray')" title="Spray Paint">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="6" cy="6" r="1" fill="currentColor"/>
@@ -723,6 +755,32 @@
                         <span id="opacityValue">100</span>
                     </div>
                     <input type="range" class="slider" id="opacity" min="1" max="100" value="100">
+                </div>
+            </div>
+
+            <div class="section" id="textSection" style="display: none;">
+                <div class="section-title">Text</div>
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>Size</span>
+                        <span id="textSizeValue">24</span>
+                    </div>
+                    <input type="range" class="slider" id="textSize" min="12" max="72" value="24">
+                </div>
+                <div class="slider-group" style="margin-bottom: 12px;">
+                    <select id="fontFamily" class="action-btn" style="margin: 0; padding: 8px;">
+                        <option value="Arial">Arial</option>
+                        <option value="Comic Sans MS">Comic Sans</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Verdana">Verdana</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <button class="action-btn" id="boldBtn" onclick="toggleTextStyle('bold')" style="flex: 1; padding: 8px; font-weight: bold;">B</button>
+                    <button class="action-btn" id="italicBtn" onclick="toggleTextStyle('italic')" style="flex: 1; padding: 8px; font-style: italic;">I</button>
                 </div>
             </div>
 
@@ -840,6 +898,16 @@
         tempCanvas.width = canvas.width;
         tempCanvas.height = canvas.height;
         let tempCtx = tempCanvas.getContext('2d');
+
+        // Text tool settings
+        let textSize = 24;
+        let fontFamily = 'Arial';
+        let isBold = false;
+        let isItalic = false;
+
+        // Live cursors
+        let remoteCursors = {};
+        let cursorUpdateThrottle = null;
 
         // Canvas pan and zoom
         let scale = 1;
@@ -1125,7 +1193,158 @@
             
             const canvasArea = document.getElementById('canvasArea');
             canvasArea.className = 'canvas-area ' + tool + '-cursor';
+
+            // Show/hide text section
+            const textSection = document.getElementById('textSection');
+            if (tool === 'text') {
+                textSection.style.display = 'block';
+            } else {
+                textSection.style.display = 'none';
+            }
         }
+
+        // Text tool functions
+        window.toggleTextStyle = function(style) {
+            if (style === 'bold') {
+                isBold = !isBold;
+                document.getElementById('boldBtn').style.background = isBold ? '#2563eb' : '#1a1a1a';
+            } else if (style === 'italic') {
+                isItalic = !isItalic;
+                document.getElementById('italicBtn').style.background = isItalic ? '#2563eb' : '#1a1a1a';
+            }
+        }
+
+        document.getElementById('textSize').addEventListener('input', (e) => {
+            textSize = parseInt(e.target.value);
+            document.getElementById('textSizeValue').textContent = textSize;
+        });
+
+        document.getElementById('fontFamily').addEventListener('change', (e) => {
+            fontFamily = e.target.value;
+        });
+
+        function addText(x, y) {
+            const text = prompt('Enter text:');
+            if (!text || text.trim() === '') return;
+
+            const textData = {
+                type: 'text',
+                text: text.trim(),
+                x: x,
+                y: y,
+                color: currentColor,
+                size: textSize,
+                font: fontFamily,
+                bold: isBold,
+                italic: isItalic,
+                userId: userId,
+                timestamp: Date.now()
+            };
+
+            push(strokesRef, textData);
+            undoStack.push(textData);
+            redoStack = [];
+        }
+
+        function drawText(data, context) {
+            let fontStyle = '';
+            if (data.italic) fontStyle += 'italic ';
+            if (data.bold) fontStyle += 'bold ';
+            
+            context.font = `${fontStyle}${data.size}px ${data.font}`;
+            context.fillStyle = data.color;
+            context.textBaseline = 'top';
+            context.fillText(data.text, data.x, data.y);
+        }
+
+        // Live cursor functions
+        function updateCursorPosition(x, y) {
+            if (cursorUpdateThrottle) return;
+            
+            const cursorsRef = ref(database, `cursors/${userId}`);
+            set(cursorsRef, {
+                x: x,
+                y: y,
+                username: username,
+                color: userColor,
+                timestamp: Date.now()
+            });
+
+            cursorUpdateThrottle = setTimeout(() => {
+                cursorUpdateThrottle = null;
+            }, 50); // Throttle to 20 updates per second
+        }
+
+        function createRemoteCursor(cursorData, cursorId) {
+            const cursor = document.createElement('div');
+            cursor.className = 'remote-cursor';
+            cursor.id = `cursor-${cursorId}`;
+            cursor.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="${cursorData.color}" stroke="white" stroke-width="1">
+                    <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                </svg>
+                <div class="remote-cursor-label" style="color: ${cursorData.color}">${cursorData.username}</div>
+            `;
+            document.getElementById('canvasArea').appendChild(cursor);
+            return cursor;
+        }
+
+        function updateRemoteCursor(cursorId, cursorData) {
+            let cursor = document.getElementById(`cursor-${cursorId}`);
+            if (!cursor) {
+                cursor = createRemoteCursor(cursorData, cursorId);
+            }
+
+            const canvasRect = canvas.getBoundingClientRect();
+            const screenX = canvasRect.left + (cursorData.x * canvasRect.width / canvas.width);
+            const screenY = canvasRect.top + (cursorData.y * canvasRect.height / canvas.height);
+
+            cursor.style.left = screenX + 'px';
+            cursor.style.top = screenY + 'px';
+            cursor.style.transform = 'translate(0, 0)';
+
+            // Remove cursor if too old (user left)
+            if (Date.now() - cursorData.timestamp > 5000) {
+                cursor.remove();
+                delete remoteCursors[cursorId];
+            }
+        }
+
+        // Track mouse movement for live cursors
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            
+            updateCursorPosition(x, y);
+        });
+
+        // Listen for other users' cursors
+        onValue(ref(database, 'cursors'), (snapshot) => {
+            const cursors = snapshot.val() || {};
+            
+            Object.keys(cursors).forEach(cursorId => {
+                if (cursorId !== userId) {
+                    updateRemoteCursor(cursorId, cursors[cursorId]);
+                    remoteCursors[cursorId] = cursors[cursorId];
+                }
+            });
+
+            // Remove cursors that are no longer in the database
+            Object.keys(remoteCursors).forEach(cursorId => {
+                if (!cursors[cursorId] && cursorId !== userId) {
+                    const cursor = document.getElementById(`cursor-${cursorId}`);
+                    if (cursor) cursor.remove();
+                    delete remoteCursors[cursorId];
+                }
+            });
+        });
+
+        // Clean up cursor on disconnect
+        const cursorRef = ref(database, `cursors/${userId}`);
+        onDisconnect(cursorRef).remove();
 
         document.getElementById('brushSize').addEventListener('input', (e) => {
             brushSize = parseInt(e.target.value);
@@ -1170,6 +1389,11 @@
             const scaleY = canvas.height / rect.height;
             const x = (e.clientX - rect.left) * scaleX;
             const y = (e.clientY - rect.top) * scaleY;
+
+            if (currentTool === 'text') {
+                addText(x, y);
+                return;
+            }
 
             if (currentTool === 'report') {
                 handleReport(x, y);
@@ -1430,6 +1654,8 @@
             Object.values(allStrokes).forEach(stroke => {
                 if (stroke.type === 'fill') {
                     // Skip fill operations in redraw
+                } else if (stroke.type === 'text') {
+                    drawText(stroke, ctx);
                 } else if (stroke.type && ['line', 'circle', 'rectangle'].includes(stroke.type)) {
                     drawShape(stroke, ctx);
                 } else if (stroke.points) {
@@ -1636,6 +1862,8 @@
 
                 if (stroke.type === 'fill') {
                     // Handle fill
+                } else if (stroke.type === 'text') {
+                    drawText(stroke, ctx);
                 } else if (stroke.type && ['line', 'circle', 'rectangle'].includes(stroke.type)) {
                     drawShape(stroke, ctx);
                 } else if (stroke.points) {
