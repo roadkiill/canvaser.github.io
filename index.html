@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canvaser</title>
+    <title>Collaborative Canvas</title>
     <style>
         * {
             margin: 0;
@@ -241,6 +241,14 @@
             cursor: cell;
         }
 
+        .canvas-area.pan-cursor #drawingCanvas {
+            cursor: grab;
+        }
+
+        .canvas-area.panning #drawingCanvas {
+            cursor: grabbing;
+        }
+
         /* Loading */
         .loading-overlay {
             position: fixed;
@@ -273,20 +281,6 @@
         .loading-text {
             color: #666;
             font-size: 14px;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                height: auto;
-                border-right: none;
-                border-bottom: 1px solid #222;
-            }
-
-            .app-container {
-                flex-direction: column;
-            }
         }
 
         /* Boards */
@@ -472,6 +466,166 @@
         .konami-close:hover {
             background: #1d4ed8;
         }
+
+        /* Chat */
+        .chat-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 320px;
+            background: #111111;
+            border: 1px solid #222222;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        .chat-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #222222;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .chat-toggle {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+            transition: color 0.2s;
+        }
+
+        .chat-toggle:hover {
+            color: #fff;
+        }
+
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        .chat-message {
+            font-size: 13px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .chat-username {
+            font-weight: 600;
+            margin-right: 4px;
+        }
+
+        .chat-text {
+            color: #ccc;
+        }
+
+        .chat-system {
+            color: #666;
+            font-style: italic;
+            font-size: 12px;
+        }
+
+        .chat-input-container {
+            padding: 12px;
+            border-top: 1px solid #222222;
+        }
+
+        .chat-input {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input:focus {
+            border-color: #3a3a3a;
+        }
+
+        .chat-input::placeholder {
+            color: #666;
+        }
+
+        .chat-container.minimized .chat-messages,
+        .chat-container.minimized .chat-input-container {
+            display: none;
+        }
+
+        .chat-container.minimized {
+            height: auto;
+        }
+
+        /* Zoom indicator */
+        .zoom-indicator {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(17, 17, 17, 0.9);
+            border: 1px solid #222;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 12px;
+            color: #aaa;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .zoom-indicator.visible {
+            opacity: 1;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid #222;
+            }
+
+            .app-container {
+                flex-direction: column;
+            }
+
+            .chat-container {
+                width: calc(100% - 40px);
+                max-width: 320px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -605,6 +759,28 @@
         </div>
     </div>
 
+    <!-- Chat -->
+    <div class="chat-container" id="chatContainer" style="display: none;">
+        <div class="chat-header">
+            <div class="chat-title">Chat</div>
+            <button class="chat-toggle" onclick="toggleChat()">−</button>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-container">
+            <input 
+                type="text" 
+                class="chat-input" 
+                id="chatInput" 
+                placeholder="Type a message..."
+                maxlength="200"
+                onkeypress="handleChatKeyPress(event)"
+            >
+        </div>
+    </div>
+
+    <!-- Zoom indicator -->
+    <div class="zoom-indicator" id="zoomIndicator">100%</div>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, push, onChildAdded, remove, set, onValue, onDisconnect, get, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
@@ -620,10 +796,6 @@
             measurementId: "G-EPKWC63ZR2"
         };
 
-        /////////////////////////////////////
-        //  stop digging in the code twin  //
-        /////////////////////////////////////
-
         const app = initializeApp(firebaseConfig);
         const database = getDatabase(app);
 
@@ -632,6 +804,7 @@
 
         let currentBoard = 'board1';
         let strokesRef = ref(database, `boards/${currentBoard}/strokes`);
+        let chatRef = ref(database, 'chat');
 
         let isDrawing = false;
         let currentStroke = [];
@@ -642,6 +815,22 @@
         let userId = localStorage.getItem('canvasUserId') || 'user_' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('canvasUserId', userId);
         
+        // Generate username and color
+        let username = localStorage.getItem('canvasUsername') || `user#${Math.floor(Math.random() * 9999)}`;
+        localStorage.setItem('canvasUsername', username);
+        
+        const USERNAME_COLORS = [
+            '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', 
+            '#EC4899', '#06B6D4', '#6366F1', '#A855F7', '#F43F5E',
+            '#14B8A6', '#F97316', '#84CC16', '#0EA5E9', '#D946EF'
+        ];
+        
+        let userColor = localStorage.getItem('canvasUserColor');
+        if (!userColor) {
+            userColor = USERNAME_COLORS[Math.floor(Math.random() * USERNAME_COLORS.length)];
+            localStorage.setItem('canvasUserColor', userColor);
+        }
+        
         let strokeCount = 0;
         let undoStack = [];
         let redoStack = [];
@@ -651,6 +840,165 @@
         tempCanvas.width = canvas.width;
         tempCanvas.height = canvas.height;
         let tempCtx = tempCanvas.getContext('2d');
+
+        // Canvas pan and zoom
+        let scale = 1;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+
+        // Profanity filter (no lookinggg)
+        const CURSE_WORDS = [
+            'fuck', 'shit', 'damn', 'ass', 'bitch', 'bastard', 'crap', 'piss',
+            'dick', 'cock', 'pussy', 'cunt', 'fag', 'nigger', 'nigga', 'whore',
+            'slut', 'retard', 'motherfucker', 'asshole', 'douche', 'twat'
+        ];
+
+        function censorMessage(message) {
+            let censored = message;
+            CURSE_WORDS.forEach(word => {
+                const regex = new RegExp(word, 'gi');
+                censored = censored.replace(regex, '*'.repeat(word.length));
+            });
+            return censored;
+        }
+
+        // Chat functions
+        window.toggleChat = function() {
+            const container = document.getElementById('chatContainer');
+            container.classList.toggle('minimized');
+            const toggle = container.querySelector('.chat-toggle');
+            toggle.textContent = container.classList.contains('minimized') ? '+' : '−';
+        }
+
+        window.handleChatKeyPress = function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+
+            const censoredMessage = censorMessage(message);
+
+            push(chatRef, {
+                userId: userId,
+                username: username,
+                color: userColor,
+                message: censoredMessage,
+                timestamp: Date.now()
+            });
+
+            input.value = '';
+        }
+
+        function addChatMessage(data) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message';
+            
+            if (data.system) {
+                messageDiv.classList.add('chat-system');
+                messageDiv.textContent = data.message;
+            } else {
+                const usernameSpan = document.createElement('span');
+                usernameSpan.className = 'chat-username';
+                usernameSpan.style.color = data.color || '#fff';
+                usernameSpan.textContent = data.username + ':';
+                
+                const textSpan = document.createElement('span');
+                textSpan.className = 'chat-text';
+                textSpan.textContent = data.message;
+                
+                messageDiv.appendChild(usernameSpan);
+                messageDiv.appendChild(textSpan);
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Limit messages to last 100
+            while (messagesDiv.children.length > 100) {
+                messagesDiv.removeChild(messagesDiv.firstChild);
+            }
+        }
+
+        // Listen for chat messages
+        onChildAdded(chatRef, (snapshot) => {
+            const data = snapshot.val();
+            addChatMessage(data);
+        });
+
+        // Zoom and pan functions
+        function updateCanvasTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        }
+
+        function showZoomIndicator() {
+            const indicator = document.getElementById('zoomIndicator');
+            indicator.textContent = Math.round(scale * 100) + '%';
+            indicator.classList.add('visible');
+            
+            clearTimeout(window.zoomTimeout);
+            window.zoomTimeout = setTimeout(() => {
+                indicator.classList.remove('visible');
+            }, 1000);
+        }
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newScale = Math.max(0.1, Math.min(5, scale * delta));
+            
+            // Zoom towards mouse position
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            panX = mouseX - (mouseX - panX) * (newScale / scale);
+            panY = mouseY - (mouseY - panY) * (newScale / scale);
+            
+            scale = newScale;
+            updateCanvasTransform();
+            showZoomIndicator();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 1) { // Middle mouse button
+                e.preventDefault();
+                isPanning = true;
+                panStart = { x: e.clientX - panX, y: e.clientY - panY };
+                document.getElementById('canvasArea').classList.add('panning');
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                panX = e.clientX - panStart.x;
+                panY = e.clientY - panStart.y;
+                updateCanvasTransform();
+            }
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (e.button === 1) {
+                isPanning = false;
+                document.getElementById('canvasArea').classList.remove('panning');
+            }
+        });
+
+        // Prevent middle click from opening links/scrolling
+        canvas.addEventListener('auxclick', (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
+            }
+        });
 
         // Konami code easter egg
         let konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
@@ -680,7 +1028,6 @@
             `;
             document.body.appendChild(overlay);
 
-            // Rainbow background effect
             let hue = 0;
             const interval = setInterval(() => {
                 document.body.style.background = `hsl(${hue}, 70%, 10%)`;
@@ -702,7 +1049,6 @@
             overlay.querySelector('.konami-close').onclick = close;
         }
 
-        // Check if user is banned
         async function checkBan() {
             const banRef = ref(database, `bans/${userId}`);
             const snapshot = await get(banRef);
@@ -725,7 +1071,6 @@
             '#06B6D4', '#6366F1', '#A855F7', '#F43F5E', '#71717A', '#78716C'
         ];
 
-        // Initialize colors
         function initColors() {
             const grid = document.getElementById('colorGrid');
             COLORS.forEach((color, index) => {
@@ -743,7 +1088,6 @@
             swatch.classList.add('active');
         }
 
-        // Initialize boards
         function initBoards() {
             const boardsList = document.getElementById('boardsList');
             for (let i = 1; i <= 5; i++) {
@@ -783,7 +1127,6 @@
             canvasArea.className = 'canvas-area ' + tool + '-cursor';
         }
 
-        // Brush size and opacity
         document.getElementById('brushSize').addEventListener('input', (e) => {
             brushSize = parseInt(e.target.value);
             document.getElementById('brushSizeValue').textContent = brushSize;
@@ -794,14 +1137,12 @@
             document.getElementById('opacityValue').textContent = opacity;
         });
 
-        // Undo and Redo
         window.undo = function() {
             if (undoStack.length === 0) return;
             
             const lastStroke = undoStack.pop();
             redoStack.push(lastStroke);
             
-            // Remove from Firebase
             const strokeToRemove = Object.keys(allStrokes).find(key => 
                 allStrokes[key].userId === userId && 
                 allStrokes[key].timestamp === lastStroke.timestamp
@@ -818,15 +1159,15 @@
             const stroke = redoStack.pop();
             undoStack.push(stroke);
             
-            // Add back to Firebase
             push(strokesRef, stroke);
         }
 
-        // Drawing functions
         function startDrawing(e) {
+            if (isPanning) return;
+            
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const x = (e.clientX - rect.left - panX) / scale;
+            const y = (e.clientY - rect.top - panY) / scale;
 
             if (currentTool === 'report') {
                 handleReport(x, y);
@@ -850,11 +1191,11 @@
         }
 
         function draw(e) {
-            if (!isDrawing) return;
+            if (!isDrawing || isPanning) return;
 
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const x = (e.clientX - rect.left - panX) / scale;
+            const y = (e.clientY - rect.top - panY) / scale;
 
             if (['line', 'circle', 'rectangle'].includes(currentTool)) {
                 drawShapePreview(x, y);
@@ -940,7 +1281,6 @@
                 tempCtx.strokeRect(shapeStart.x, shapeStart.y, width, height);
             }
 
-            // Draw temp canvas on main canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             redrawCanvas();
             ctx.drawImage(tempCanvas, 0, 0);
@@ -1094,7 +1434,6 @@
             });
         }
 
-        // Report functionality
         function handleReport(x, y) {
             const clickedStroke = findStrokeAtPosition(x, y);
             if (!clickedStroke) {
@@ -1123,7 +1462,6 @@
 
             const reportRef = push(ref(database, 'reports'), reportData);
             
-            // Broadcast vote request
             set(ref(database, `activeVote`), {
                 reportId: reportRef.key,
                 reportedUser: clickedStroke.userId,
@@ -1144,7 +1482,6 @@
                         }
                     }
                 } else if (stroke.type && stroke.start && stroke.end) {
-                    // Check shapes
                     const dist = pointToLineDistance(x, y, stroke.start.x, stroke.start.y, stroke.end.x, stroke.end.y);
                     if (dist <= tolerance + stroke.size / 2) {
                         return { ...stroke, id };
@@ -1167,7 +1504,6 @@
             return Math.sqrt(Math.pow(px - projX, 2) + Math.pow(py - projY, 2));
         }
 
-        // Vote system
         let currentVoteId = null;
 
         function showVoteBanner(reportData, reportId) {
@@ -1214,16 +1550,14 @@
             }
         }
 
-        // Monitor votes
         onValue(ref(database, 'activeVote'), async (snapshot) => {
             if (!snapshot.exists()) return;
 
             const voteData = snapshot.val();
-            if (voteData.reportedUser === userId) return; // Don't show to reported user
+            if (voteData.reportedUser === userId) return;
 
             showVoteBanner(voteData, voteData.reportId);
 
-            // Check vote results
             const reportRef = ref(database, `reports/${voteData.reportId}`);
             const reportSnap = await get(reportRef);
             
@@ -1234,22 +1568,19 @@
             const yesVotes = Object.values(votes).filter(v => v === true).length;
             const totalVotes = Object.values(votes).length;
 
-            // Get online user count
             const usersSnap = await get(ref(database, 'users'));
             const onlineCount = usersSnap.exists() ? Object.keys(usersSnap.val()).length : 1;
 
             const threshold = Math.max(2, Math.ceil(onlineCount * 0.4));
 
             if (yesVotes >= threshold) {
-                // Ban that motherfucker
-                const banUntil = Date.now() + (2 * 60 * 60 * 1000); // 2 hours
+                const banUntil = Date.now() + (2 * 60 * 60 * 1000);
                 await set(ref(database, `bans/${voteData.reportedUser}`), {
                     until: banUntil,
                     reason: voteData.reason,
                     timestamp: Date.now()
                 });
 
-                // Clear the vote
                 await remove(ref(database, 'activeVote'));
 
                 const banner = document.querySelector('.vote-banner');
@@ -1260,13 +1591,11 @@
             }
         });
 
-        // Canvas events
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', stopDrawing);
         canvas.addEventListener('mouseleave', stopDrawing);
 
-        // Touch events
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
@@ -1293,7 +1622,6 @@
             canvas.dispatchEvent(mouseEvent);
         });
 
-        // Listen for new strokes
         function listenForUpdates() {
             strokeCount = 0;
             allStrokes = {};
@@ -1317,13 +1645,11 @@
                 updateBoardCount();
             });
 
-            // Listen for stroke removal (undo)
             onValue(strokesRef, (snapshot) => {
                 const data = snapshot.val() || {};
                 const currentKeys = new Set(Object.keys(data));
                 const previousKeys = new Set(Object.keys(allStrokes));
 
-                // Find removed strokes
                 for (const key of previousKeys) {
                     if (!currentKeys.has(key)) {
                         delete allStrokes[key];
@@ -1343,7 +1669,6 @@
             }
         }
 
-        // Clear canvas
         window.clearCanvas = function() {
             if (confirm('Clear the entire canvas? This will remove all artwork.')) {
                 ctx.fillStyle = 'white';
@@ -1356,7 +1681,6 @@
             }
         }
 
-        // Download canvas
         window.downloadCanvas = function() {
             const link = document.createElement('a');
             link.download = `canvas-${currentBoard}-${Date.now()}.png`;
@@ -1364,14 +1688,15 @@
             link.click();
         }
 
-        // Track online users
         function trackOnlineUsers() {
             const userRef = ref(database, `users/${userId}`);
             const usersRef = ref(database, 'users');
             
             set(userRef, {
                 online: true,
-                lastSeen: Date.now()
+                lastSeen: Date.now(),
+                username: username,
+                color: userColor
             });
 
             onDisconnect(userRef).remove();
@@ -1383,7 +1708,6 @@
             });
         }
 
-        // Initialize
         async function init() {
             const isBanned = await checkBan();
             if (isBanned) return;
@@ -1398,6 +1722,14 @@
             
             document.getElementById('loading').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
+            document.getElementById('chatContainer').style.display = 'flex';
+            
+            // Send join message
+            push(chatRef, {
+                system: true,
+                message: `${username} joined the canvas`,
+                timestamp: Date.now()
+            });
         }
 
         setTimeout(init, 1000);
