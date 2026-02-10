@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Canvas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: #111111;
+            border-right: 1px solid #222222;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 30px;
+            letter-spacing: -0.5px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 500;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        /* Tools */
+        .tools {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .tool-btn {
+            width: 40px;
+            height: 40px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            font-size: 18px;
+        }
+
+        .tool-btn:hover {
+            background: #252525;
+            border-color: #3a3a3a;
+        }
+
+        .tool-btn.active {
+            background: #2563eb;
+            border-color: #2563eb;
+        }
+
+        /* Brush settings */
+        .slider-group {
+            margin-bottom: 16px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #aaa;
+        }
+
+        .slider {
+            width: 100%;
+            height: 4px;
+            background: #2a2a2a;
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        /* Colors */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+        }
+
+        .color-swatch {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.1);
+        }
+
+        .color-swatch.active {
+            border-color: #fff;
+            box-shadow: 0 0 0 2px #000;
+        }
+
+        /* Actions */
+        .action-btn {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .action-btn:hover {
+            background: #252525;
+            border-color: #3a3a3a;
+        }
+
+        .action-btn.danger:hover {
+            background: #dc2626;
+            border-color: #dc2626;
+        }
+
+        /* Status */
+        .status {
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid #222;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .status-value {
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .online-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .online-dot {
+            width: 6px;
+            height: 6px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Canvas area */
+        .canvas-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #drawingCanvas {
+            background: #ffffff;
+            cursor: crosshair;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Cursors */
+        .canvas-area.brush-cursor #drawingCanvas {
+            cursor: crosshair;
+        }
+
+        .canvas-area.eraser-cursor #drawingCanvas {
+            cursor: cell;
+        }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #0a0a0a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #222;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid #222;
+            }
+
+            .app-container {
+                flex-direction: column;
+            }
+        }
+
+        /* Boards */
+        .boards-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .board-item {
+            padding: 10px 12px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .board-item:hover {
+            background: #252525;
+            border-color: #3a3a3a;
+        }
+
+        .board-item.active {
+            background: #2563eb;
+            border-color: #2563eb;
+        }
+
+        .board-name {
+            font-weight: 500;
+        }
+
+        .board-count {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .board-item.active .board-count {
+            color: #bfdbfe;
+        }
+
+        /* Vote banner */
+        .vote-banner {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a1a;
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            padding: 16px 24px;
+            z-index: 1000;
+            min-width: 400px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        .vote-header {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ef4444;
+        }
+
+        .vote-reason {
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 12px;
+        }
+
+        .vote-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .vote-btn {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .vote-yes {
+            background: #ef4444;
+            color: white;
+        }
+
+        .vote-yes:hover {
+            background: #dc2626;
+        }
+
+        .vote-no {
+            background: #2a2a2a;
+            color: white;
+        }
+
+        .vote-no:hover {
+            background: #3a3a3a;
+        }
+
+        .vote-status {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* Easter egg */
+        .konami-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .konami-content {
+            text-align: center;
+        }
+
+        .konami-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #ff0080, #ff8c00, #40e0d0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: rainbow 3s linear infinite;
+        }
+
+        @keyframes rainbow {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+
+        .konami-subtitle {
+            font-size: 18px;
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .konami-close {
+            padding: 12px 24px;
+            background: #2563eb;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .konami-close:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Connecting...</div>
+    </div>
+
+    <div class="app-container" id="app" style="display: none;">
+        <div class="sidebar">
+            <div class="logo">Canvas</div>
+
+            <div class="section">
+                <div class="section-title">Tools</div>
+                <div class="tools">
+                    <div class="tool-btn active" id="brushTool" onclick="selectTool('brush')" title="Brush">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" id="eraserTool" onclick="selectTool('eraser')" title="Eraser">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 20H7L3 16L11 8L17 14L20 11V20Z"/>
+                            <path d="M3 16L11 8L17 14"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" id="fillTool" onclick="selectTool('fill')" title="Fill Bucket">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 9l-6-6-6 6v12h12V9z"/>
+                            <circle cx="18" cy="20" r="2"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" id="lineTool" onclick="selectTool('line')" title="Line">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="4" y1="20" x2="20" y2="4"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" id="circleTool" onclick="selectTool('circle')" title="Circle">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="8"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" id="rectangleTool" onclick="selectTool('rectangle')" title="Rectangle">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="5" y="7" width="14" height="10"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="tools" style="margin-top: 8px;">
+                    <div class="tool-btn" id="sprayTool" onclick="selectTool('spray')" title="Spray Paint">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="6" cy="6" r="1" fill="currentColor"/>
+                            <circle cx="10" cy="8" r="1" fill="currentColor"/>
+                            <circle cx="8" cy="11" r="1" fill="currentColor"/>
+                            <circle cx="12" cy="13" r="1" fill="currentColor"/>
+                            <circle cx="15" cy="9" r="1" fill="currentColor"/>
+                            <path d="M18 3l3 3-12 12-3-3z"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" id="reportTool" onclick="selectTool('report')" title="Report Stroke" style="border: 1px solid #ef4444;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" onclick="undo()" title="Undo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v6h6"/>
+                            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                        </svg>
+                    </div>
+                    <div class="tool-btn" onclick="redo()" title="Redo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 7v6h-6"/>
+                            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Brush</div>
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>Size</span>
+                        <span id="brushSizeValue">5</span>
+                    </div>
+                    <input type="range" class="slider" id="brushSize" min="1" max="50" value="5">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>Opacity</span>
+                        <span id="opacityValue">100</span>
+                    </div>
+                    <input type="range" class="slider" id="opacity" min="1" max="100" value="100">
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Colors</div>
+                <div class="color-grid" id="colorGrid"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Boards</div>
+                <div class="boards-list" id="boardsList"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Actions</div>
+                <button class="action-btn" onclick="downloadCanvas()">Download Canvas</button>
+                <button class="action-btn danger" onclick="clearCanvas()">Clear All</button>
+            </div>
+
+            <div class="status">
+                <div class="online-indicator">
+                    <div class="online-dot"></div>
+                    <span id="onlineCount">0 online</span>
+                </div>
+                <div class="status-item">
+                    <span>Strokes drawn</span>
+                    <span class="status-value" id="strokeCount">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-area brush-cursor" id="canvasArea">
+            <canvas id="drawingCanvas" width="1200" height="800"></canvas>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, push, onChildAdded, remove, set, onValue, onDisconnect, get, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBU-dUURuUm0DrCVYR-W-IaF6Qr_SiA5ac",
+            authDomain: "draw-app-4f585.firebaseapp.com",
+            databaseURL: "https://draw-app-4f585-default-rtdb.firebaseio.com",
+            projectId: "draw-app-4f585",
+            storageBucket: "draw-app-4f585.firebasestorage.app",
+            messagingSenderId: "148544401774",
+            appId: "1:148544401774:web:33d711f85dc17361b1d17f",
+            measurementId: "G-EPKWC63ZR2"
+        };
+
+        /////////////////////////////////////
+        //  stop digging in the code twin  //
+        /////////////////////////////////////
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let currentBoard = 'board1';
+        let strokesRef = ref(database, `boards/${currentBoard}/strokes`);
+
+        let isDrawing = false;
+        let currentStroke = [];
+        let currentTool = 'brush';
+        let currentColor = '#000000';
+        let brushSize = 5;
+        let opacity = 100;
+        let userId = localStorage.getItem('canvasUserId') || 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('canvasUserId', userId);
+        
+        let strokeCount = 0;
+        let undoStack = [];
+        let redoStack = [];
+        let allStrokes = {};
+        let shapeStart = null;
+        let tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        let tempCtx = tempCanvas.getContext('2d');
+
+        // Konami code easter egg
+        let konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+        let konamiIndex = 0;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) {
+                    showKonamiEasterEgg();
+                    konamiIndex = 0;
+                }
+            } else {
+                konamiIndex = 0;
+            }
+        });
+
+        function showKonamiEasterEgg() {
+            const overlay = document.createElement('div');
+            overlay.className = 'konami-overlay';
+            overlay.innerHTML = `
+                <div class="konami-content">
+                    <div class="konami-title">DISCO MODE ACTIVATED!</div>
+                    <div class="konami-subtitle">You found the secret! Press ESC to continue.</div>
+                    <button class="konami-close" onclick="this.parentElement.parentElement.remove()">Close</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // Rainbow background effect
+            let hue = 0;
+            const interval = setInterval(() => {
+                document.body.style.background = `hsl(${hue}, 70%, 10%)`;
+                hue = (hue + 1) % 360;
+            }, 50);
+
+            const close = () => {
+                clearInterval(interval);
+                document.body.style.background = '#0a0a0a';
+                overlay.remove();
+                document.removeEventListener('keydown', escHandler);
+            };
+
+            const escHandler = (e) => {
+                if (e.key === 'Escape') close();
+            };
+
+            document.addEventListener('keydown', escHandler);
+            overlay.querySelector('.konami-close').onclick = close;
+        }
+
+        // Check if user is banned
+        async function checkBan() {
+            const banRef = ref(database, `bans/${userId}`);
+            const snapshot = await get(banRef);
+            if (snapshot.exists()) {
+                const banData = snapshot.val();
+                const now = Date.now();
+                if (banData.until > now) {
+                    const minutesLeft = Math.ceil((banData.until - now) / 60000);
+                    alert(`You are temporarily banned for ${minutesLeft} minutes. Reason: ${banData.reason}`);
+                    window.location.href = 'about:blank';
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        const COLORS = [
+            '#000000', '#FFFFFF', '#EF4444', '#F59E0B', '#10B981', '#3B82F6',
+            '#8B5CF6', '#EC4899', '#64748B', '#DC2626', '#EA580C', '#84CC16',
+            '#06B6D4', '#6366F1', '#A855F7', '#F43F5E', '#71717A', '#78716C'
+        ];
+
+        // Initialize colors
+        function initColors() {
+            const grid = document.getElementById('colorGrid');
+            COLORS.forEach((color, index) => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch' + (index === 0 ? ' active' : '');
+                swatch.style.background = color;
+                swatch.onclick = () => selectColor(color, swatch);
+                grid.appendChild(swatch);
+            });
+        }
+
+        function selectColor(color, swatch) {
+            currentColor = color;
+            document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            swatch.classList.add('active');
+        }
+
+        // Initialize boards
+        function initBoards() {
+            const boardsList = document.getElementById('boardsList');
+            for (let i = 1; i <= 5; i++) {
+                const boardDiv = document.createElement('div');
+                boardDiv.className = 'board-item' + (i === 1 ? ' active' : '');
+                boardDiv.innerHTML = `
+                    <span class="board-name">Board ${i}</span>
+                    <span class="board-count" id="board${i}Count">0</span>
+                `;
+                boardDiv.onclick = () => switchBoard(`board${i}`, boardDiv);
+                boardsList.appendChild(boardDiv);
+            }
+        }
+
+        function switchBoard(boardId, element) {
+            currentBoard = boardId;
+            document.querySelectorAll('.board-item').forEach(b => b.classList.remove('active'));
+            element.classList.add('active');
+            
+            strokesRef = ref(database, `boards/${currentBoard}/strokes`);
+            allStrokes = {};
+            undoStack = [];
+            redoStack = [];
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            listenForUpdates();
+        }
+
+        window.selectTool = function(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            if (document.getElementById(tool + 'Tool')) {
+                document.getElementById(tool + 'Tool').classList.add('active');
+            }
+            
+            const canvasArea = document.getElementById('canvasArea');
+            canvasArea.className = 'canvas-area ' + tool + '-cursor';
+        }
+
+        // Brush size and opacity
+        document.getElementById('brushSize').addEventListener('input', (e) => {
+            brushSize = parseInt(e.target.value);
+            document.getElementById('brushSizeValue').textContent = brushSize;
+        });
+
+        document.getElementById('opacity').addEventListener('input', (e) => {
+            opacity = parseInt(e.target.value);
+            document.getElementById('opacityValue').textContent = opacity;
+        });
+
+        // Undo and Redo
+        window.undo = function() {
+            if (undoStack.length === 0) return;
+            
+            const lastStroke = undoStack.pop();
+            redoStack.push(lastStroke);
+            
+            // Remove from Firebase
+            const strokeToRemove = Object.keys(allStrokes).find(key => 
+                allStrokes[key].userId === userId && 
+                allStrokes[key].timestamp === lastStroke.timestamp
+            );
+            
+            if (strokeToRemove) {
+                remove(ref(database, `boards/${currentBoard}/strokes/${strokeToRemove}`));
+            }
+        }
+
+        window.redo = function() {
+            if (redoStack.length === 0) return;
+            
+            const stroke = redoStack.pop();
+            undoStack.push(stroke);
+            
+            // Add back to Firebase
+            push(strokesRef, stroke);
+        }
+
+        // Drawing functions
+        function startDrawing(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (currentTool === 'report') {
+                handleReport(x, y);
+                return;
+            }
+
+            if (currentTool === 'fill') {
+                floodFill(x, y);
+                return;
+            }
+
+            if (['line', 'circle', 'rectangle'].includes(currentTool)) {
+                isDrawing = true;
+                shapeStart = {x, y};
+                tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                return;
+            }
+
+            isDrawing = true;
+            currentStroke = [{x, y}];
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (['line', 'circle', 'rectangle'].includes(currentTool)) {
+                drawShapePreview(x, y);
+                return;
+            }
+
+            currentStroke.push({x, y});
+
+            if (currentTool === 'spray') {
+                drawSpray(x, y);
+            } else {
+                drawStroke(currentStroke, currentColor, brushSize, opacity, currentTool, ctx);
+            }
+        }
+
+        function stopDrawing() {
+            if (!isDrawing || currentStroke.length === 0 && !shapeStart) return;
+            
+            isDrawing = false;
+
+            let strokeData;
+
+            if (['line', 'circle', 'rectangle'].includes(currentTool) && shapeStart) {
+                const rect = canvas.getBoundingClientRect();
+                const lastPos = tempCanvas.lastMousePos || shapeStart;
+                
+                strokeData = {
+                    type: currentTool,
+                    start: shapeStart,
+                    end: lastPos,
+                    color: currentColor,
+                    size: brushSize,
+                    opacity: opacity,
+                    userId: userId,
+                    timestamp: Date.now()
+                };
+                
+                shapeStart = null;
+                tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+            } else if (currentStroke.length > 0) {
+                strokeData = {
+                    points: currentStroke,
+                    color: currentColor,
+                    size: brushSize,
+                    opacity: opacity,
+                    tool: currentTool,
+                    userId: userId,
+                    timestamp: Date.now()
+                };
+            }
+
+            if (strokeData) {
+                push(strokesRef, strokeData);
+                undoStack.push(strokeData);
+                redoStack = [];
+                currentStroke = [];
+            }
+        }
+
+        function drawShapePreview(x, y) {
+            tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tempCanvas.lastMousePos = {x, y};
+            
+            tempCtx.lineCap = 'round';
+            tempCtx.lineJoin = 'round';
+            tempCtx.lineWidth = brushSize;
+            const rgb = hexToRgb(currentColor);
+            tempCtx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity / 100})`;
+
+            if (currentTool === 'line') {
+                tempCtx.beginPath();
+                tempCtx.moveTo(shapeStart.x, shapeStart.y);
+                tempCtx.lineTo(x, y);
+                tempCtx.stroke();
+            } else if (currentTool === 'circle') {
+                const radius = Math.sqrt(Math.pow(x - shapeStart.x, 2) + Math.pow(y - shapeStart.y, 2));
+                tempCtx.beginPath();
+                tempCtx.arc(shapeStart.x, shapeStart.y, radius, 0, 2 * Math.PI);
+                tempCtx.stroke();
+            } else if (currentTool === 'rectangle') {
+                const width = x - shapeStart.x;
+                const height = y - shapeStart.y;
+                tempCtx.strokeRect(shapeStart.x, shapeStart.y, width, height);
+            }
+
+            // Draw temp canvas on main canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            redrawCanvas();
+            ctx.drawImage(tempCanvas, 0, 0);
+        }
+
+        function drawSpray(x, y) {
+            const density = 20;
+            const radius = brushSize * 2;
+            
+            for (let i = 0; i < density; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * radius;
+                const sprayX = x + Math.cos(angle) * distance;
+                const sprayY = y + Math.sin(angle) * distance;
+                
+                ctx.fillStyle = currentColor;
+                ctx.globalAlpha = opacity / 100;
+                ctx.fillRect(sprayX, sprayY, 1, 1);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function floodFill(startX, startY) {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
+            const startPos = (Math.floor(startY) * canvas.width + Math.floor(startX)) * 4;
+            const startR = pixels[startPos];
+            const startG = pixels[startPos + 1];
+            const startB = pixels[startPos + 2];
+
+            const rgb = hexToRgb(currentColor);
+            const fillR = rgb.r;
+            const fillG = rgb.g;
+            const fillB = rgb.b;
+
+            if (startR === fillR && startG === fillG && startB === fillB) return;
+
+            const stack = [{x: Math.floor(startX), y: Math.floor(startY)}];
+            const visited = new Set();
+
+            while (stack.length > 0) {
+                const {x, y} = stack.pop();
+                const key = `${x},${y}`;
+                
+                if (visited.has(key)) continue;
+                if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) continue;
+                
+                const pos = (y * canvas.width + x) * 4;
+                const r = pixels[pos];
+                const g = pixels[pos + 1];
+                const b = pixels[pos + 2];
+
+                if (r !== startR || g !== startG || b !== startB) continue;
+
+                visited.add(key);
+                pixels[pos] = fillR;
+                pixels[pos + 1] = fillG;
+                pixels[pos + 2] = fillB;
+
+                stack.push({x: x + 1, y});
+                stack.push({x: x - 1, y});
+                stack.push({x, y: y + 1});
+                stack.push({x, y: y - 1});
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            const fillData = {
+                type: 'fill',
+                x: startX,
+                y: startY,
+                color: currentColor,
+                userId: userId,
+                timestamp: Date.now()
+            };
+
+            push(strokesRef, fillData);
+        }
+
+        function drawStroke(points, color, size, opacity, tool, context) {
+            if (points.length < 2) return;
+
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            context.lineWidth = size;
+            
+            if (tool === 'eraser') {
+                context.globalCompositeOperation = 'destination-out';
+                context.strokeStyle = 'rgba(0,0,0,1)';
+            } else {
+                context.globalCompositeOperation = 'source-over';
+                const rgb = hexToRgb(color);
+                context.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity / 100})`;
+            }
+
+            context.beginPath();
+            context.moveTo(points[0].x, points[0].y);
+
+            for (let i = 1; i < points.length; i++) {
+                context.lineTo(points[i].x, points[i].y);
+            }
+
+            context.stroke();
+        }
+
+        function drawShape(data, context) {
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            context.lineWidth = data.size;
+            const rgb = hexToRgb(data.color);
+            context.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${data.opacity / 100})`;
+
+            if (data.type === 'line') {
+                context.beginPath();
+                context.moveTo(data.start.x, data.start.y);
+                context.lineTo(data.end.x, data.end.y);
+                context.stroke();
+            } else if (data.type === 'circle') {
+                const radius = Math.sqrt(Math.pow(data.end.x - data.start.x, 2) + Math.pow(data.end.y - data.start.y, 2));
+                context.beginPath();
+                context.arc(data.start.x, data.start.y, radius, 0, 2 * Math.PI);
+                context.stroke();
+            } else if (data.type === 'rectangle') {
+                const width = data.end.x - data.start.x;
+                const height = data.end.y - data.start.y;
+                context.strokeRect(data.start.x, data.start.y, width, height);
+            }
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : {r: 0, g: 0, b: 0};
+        }
+
+        function redrawCanvas() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            Object.values(allStrokes).forEach(stroke => {
+                if (stroke.type === 'fill') {
+                    // Skip fill operations in redraw
+                } else if (stroke.type && ['line', 'circle', 'rectangle'].includes(stroke.type)) {
+                    drawShape(stroke, ctx);
+                } else if (stroke.points) {
+                    drawStroke(stroke.points, stroke.color, stroke.size, stroke.opacity, stroke.tool, ctx);
+                }
+            });
+        }
+
+        // Report functionality
+        function handleReport(x, y) {
+            const clickedStroke = findStrokeAtPosition(x, y);
+            if (!clickedStroke) {
+                alert('No stroke found at this position. Try clicking directly on a stroke.');
+                return;
+            }
+
+            if (clickedStroke.userId === userId) {
+                alert('You cannot report your own strokes.');
+                return;
+            }
+
+            const reason = prompt('Why are you reporting this stroke?\n(e.g., inappropriate content, spam, etc.)');
+            if (!reason || reason.trim() === '') return;
+
+            const reportData = {
+                strokeId: clickedStroke.id,
+                reportedUser: clickedStroke.userId,
+                reporter: userId,
+                reason: reason.trim(),
+                timestamp: Date.now(),
+                votes: {
+                    [userId]: true
+                }
+            };
+
+            const reportRef = push(ref(database, 'reports'), reportData);
+            
+            // Broadcast vote request
+            set(ref(database, `activeVote`), {
+                reportId: reportRef.key,
+                reportedUser: clickedStroke.userId,
+                reason: reason.trim(),
+                timestamp: Date.now()
+            });
+        }
+
+        function findStrokeAtPosition(x, y) {
+            const tolerance = 10;
+            
+            for (const [id, stroke] of Object.entries(allStrokes)) {
+                if (stroke.points) {
+                    for (const point of stroke.points) {
+                        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+                        if (distance <= tolerance + stroke.size / 2) {
+                            return { ...stroke, id };
+                        }
+                    }
+                } else if (stroke.type && stroke.start && stroke.end) {
+                    // Check shapes
+                    const dist = pointToLineDistance(x, y, stroke.start.x, stroke.start.y, stroke.end.x, stroke.end.y);
+                    if (dist <= tolerance + stroke.size / 2) {
+                        return { ...stroke, id };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len === 0) return Math.sqrt(Math.pow(px - x1, 2) + Math.pow(py - y1, 2));
+            
+            const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (len * len)));
+            const projX = x1 + t * dx;
+            const projY = y1 + t * dy;
+            
+            return Math.sqrt(Math.pow(px - projX, 2) + Math.pow(py - projY, 2));
+        }
+
+        // Vote system
+        let currentVoteId = null;
+
+        function showVoteBanner(reportData, reportId) {
+            if (currentVoteId === reportId) return;
+            currentVoteId = reportId;
+
+            const existing = document.querySelector('.vote-banner');
+            if (existing) existing.remove();
+
+            const banner = document.createElement('div');
+            banner.className = 'vote-banner';
+            banner.innerHTML = `
+                <div class="vote-header">Vote to kick user?</div>
+                <div class="vote-reason">Reason: ${reportData.reason}</div>
+                <div class="vote-actions">
+                    <button class="vote-btn vote-yes" onclick="castVote('${reportId}', true)">Yes, kick them</button>
+                    <button class="vote-btn vote-no" onclick="castVote('${reportId}', false)">No</button>
+                </div>
+                <div class="vote-status" id="voteStatus">Waiting for votes...</div>
+            `;
+            document.body.appendChild(banner);
+
+            setTimeout(() => {
+                banner.remove();
+                currentVoteId = null;
+            }, 30000);
+        }
+
+        window.castVote = async function(reportId, vote) {
+            const reportRef = ref(database, `reports/${reportId}`);
+            const snapshot = await get(reportRef);
+            
+            if (!snapshot.exists()) return;
+
+            const reportData = snapshot.val();
+            const votes = reportData.votes || {};
+            votes[userId] = vote;
+
+            await update(reportRef, { votes });
+
+            const banner = document.querySelector('.vote-banner');
+            if (banner) {
+                banner.querySelector('#voteStatus').textContent = 'Vote recorded!';
+            }
+        }
+
+        // Monitor votes
+        onValue(ref(database, 'activeVote'), async (snapshot) => {
+            if (!snapshot.exists()) return;
+
+            const voteData = snapshot.val();
+            if (voteData.reportedUser === userId) return; // Don't show to reported user
+
+            showVoteBanner(voteData, voteData.reportId);
+
+            // Check vote results
+            const reportRef = ref(database, `reports/${voteData.reportId}`);
+            const reportSnap = await get(reportRef);
+            
+            if (!reportSnap.exists()) return;
+
+            const reportData = reportSnap.val();
+            const votes = reportData.votes || {};
+            const yesVotes = Object.values(votes).filter(v => v === true).length;
+            const totalVotes = Object.values(votes).length;
+
+            // Get online user count
+            const usersSnap = await get(ref(database, 'users'));
+            const onlineCount = usersSnap.exists() ? Object.keys(usersSnap.val()).length : 1;
+
+            const threshold = Math.max(2, Math.ceil(onlineCount * 0.4));
+
+            if (yesVotes >= threshold) {
+                // Ban that motherfucker
+                const banUntil = Date.now() + (2 * 60 * 60 * 1000); // 2 hours
+                await set(ref(database, `bans/${voteData.reportedUser}`), {
+                    until: banUntil,
+                    reason: voteData.reason,
+                    timestamp: Date.now()
+                });
+
+                // Clear the vote
+                await remove(ref(database, 'activeVote'));
+
+                const banner = document.querySelector('.vote-banner');
+                if (banner) {
+                    banner.querySelector('#voteStatus').textContent = 'User has been kicked!';
+                    setTimeout(() => banner.remove(), 3000);
+                }
+            }
+        });
+
+        // Canvas events
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseleave', stopDrawing);
+
+        // Touch events
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            const mouseEvent = new MouseEvent('mouseup', {});
+            canvas.dispatchEvent(mouseEvent);
+        });
+
+        // Listen for new strokes
+        function listenForUpdates() {
+            strokeCount = 0;
+            allStrokes = {};
+
+            onChildAdded(strokesRef, (snapshot) => {
+                const stroke = snapshot.val();
+                allStrokes[snapshot.key] = stroke;
+
+                if (stroke.type === 'fill') {
+                    // Handle fill
+                } else if (stroke.type && ['line', 'circle', 'rectangle'].includes(stroke.type)) {
+                    drawShape(stroke, ctx);
+                } else if (stroke.points) {
+                    if (stroke.userId !== userId) {
+                        drawStroke(stroke.points, stroke.color, stroke.size, stroke.opacity, stroke.tool, ctx);
+                    }
+                }
+
+                strokeCount++;
+                document.getElementById('strokeCount').textContent = strokeCount;
+                updateBoardCount();
+            });
+
+            // Listen for stroke removal (undo)
+            onValue(strokesRef, (snapshot) => {
+                const data = snapshot.val() || {};
+                const currentKeys = new Set(Object.keys(data));
+                const previousKeys = new Set(Object.keys(allStrokes));
+
+                // Find removed strokes
+                for (const key of previousKeys) {
+                    if (!currentKeys.has(key)) {
+                        delete allStrokes[key];
+                        redrawCanvas();
+                        strokeCount--;
+                        document.getElementById('strokeCount').textContent = strokeCount;
+                        updateBoardCount();
+                    }
+                }
+            });
+        }
+
+        function updateBoardCount() {
+            const countElement = document.getElementById(currentBoard + 'Count');
+            if (countElement) {
+                countElement.textContent = strokeCount;
+            }
+        }
+
+        // Clear canvas
+        window.clearCanvas = function() {
+            if (confirm('Clear the entire canvas? This will remove all artwork.')) {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                remove(strokesRef);
+                allStrokes = {};
+                strokeCount = 0;
+                document.getElementById('strokeCount').textContent = strokeCount;
+                updateBoardCount();
+            }
+        }
+
+        // Download canvas
+        window.downloadCanvas = function() {
+            const link = document.createElement('a');
+            link.download = `canvas-${currentBoard}-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // Track online users
+        function trackOnlineUsers() {
+            const userRef = ref(database, `users/${userId}`);
+            const usersRef = ref(database, 'users');
+            
+            set(userRef, {
+                online: true,
+                lastSeen: Date.now()
+            });
+
+            onDisconnect(userRef).remove();
+
+            onValue(usersRef, (snapshot) => {
+                const users = snapshot.val();
+                const count = users ? Object.keys(users).length : 0;
+                document.getElementById('onlineCount').textContent = count + ' online';
+            });
+        }
+
+        // Initialize
+        async function init() {
+            const isBanned = await checkBan();
+            if (isBanned) return;
+
+            initColors();
+            initBoards();
+            trackOnlineUsers();
+            listenForUpdates();
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+        }
+
+        setTimeout(init, 1000);
+    </script>
+</body>
+</html>
