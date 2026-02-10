@@ -1542,7 +1542,7 @@
             list.innerHTML = layers.slice().reverse().map(layer => `
                 <div class="layer-item ${layer.id === currentLayerId ? 'active' : ''}" onclick="selectLayer(${layer.id})">
                     <div class="layer-visibility" onclick="event.stopPropagation(); toggleLayerVisibility(${layer.id})">
-                        ${layer.visible ? '👁️' : '🚫'}
+                        ${layer.visible ? '<◉>' : '<–>'}
                     </div>
                     <div class="layer-preview"></div>
                     <div class="layer-info">
