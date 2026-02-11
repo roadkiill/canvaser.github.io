@@ -121,9 +121,13 @@
         .canvas-area.panning        #drawingCanvas { cursor: grabbing !important; }
 
         /* Live cursors */
-        #cursorOverlay { position: absolute; inset: 0; pointer-events: none; }
-        .live-cursor { position: absolute; pointer-events: none; }
-        .live-cursor-label { position: absolute; top: 18px; left: 8px; font-size: 11px; font-weight: 700; white-space: nowrap; padding: 2px 6px; border-radius: 4px; color: #fff; }
+        #cursorOverlay { position: absolute; inset: 0; pointer-events: none; z-index: 100; }
+        .live-cursor { position: absolute; pointer-events: none; transition: left 0.1s, top 0.1s; }
+        .live-cursor-label { 
+            position: absolute; top: 18px; left: 8px; font-size: 11px; font-weight: 700; 
+            white-space: nowrap; padding: 3px 7px; border-radius: 4px; color: #fff; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
 
         /* Loading */
         .loading-overlay { position: fixed; inset: 0; background: #0a0a0a; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 1000; }
@@ -149,6 +153,10 @@
         .auth-submit:disabled { opacity: 0.5; cursor: not-allowed; }
         .auth-error { background: #7f1d1d; border: 1px solid #991b1b; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #fca5a5; margin-bottom: 14px; }
         .auth-hint { font-size: 11px; color: #666; margin-top: -8px; }
+        .auth-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: #555; font-size: 12px; }
+        .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: #2a2a2a; }
+        .guest-btn { width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px; color: #aaa; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+        .guest-btn:hover { background: #252525; border-color: #3a3a3a; color: #fff; }
 
         /* Vote */
         .vote-banner { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1a1a1a; border: 2px solid #ef4444; border-radius: 8px; padding: 16px 20px; z-index: 500; min-width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); animation: slideDown 0.3s ease-out; }
@@ -178,6 +186,7 @@
         .chat-input { width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 5px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none; font-family: inherit; }
         .chat-input:focus { border-color: #3a3a3a; }
         .chat-input::placeholder { color: #555; }
+        .chat-input:disabled { opacity: 0.5; cursor: not-allowed; background: #0a0a0a; }
         .chat-container.minimized .chat-messages,
         .chat-container.minimized .chat-input-wrap { display: none; }
 
@@ -231,6 +240,10 @@
             <div class="auth-hint">Minimum 6 characters</div>
             <button type="submit" class="auth-submit">Create Account</button>
         </form>
+
+        <!-- Guest Option -->
+        <div class="auth-divider">OR</div>
+        <button class="guest-btn" onclick="continueAsGuest()">Continue as Guest</button>
     </div>
 </div>
 
@@ -393,7 +406,7 @@ import { getDatabase, ref, push, onChildAdded,
          remove, set, onValue, onDisconnect, get, update }
                           from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-         onAuthStateChanged, signOut }
+         onAuthStateChanged, signOut, signInAnonymously }
                           from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
 // ─────────────────────────────────────────────────────────
@@ -414,6 +427,7 @@ const auth = getAuth(app);
 // ── Global state ──────────────────────────────────────────
 let userId = null;
 let username = null;
+let isGuestUser = false;
 const U_COLORS = ['#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899','#06B6D4','#6366F1','#A855F7','#F43F5E','#14B8A6','#F97316','#84CC16','#0EA5E9','#D946EF'];
 let userColor = U_COLORS[Math.floor(Math.random()*U_COLORS.length)];
 
@@ -479,6 +493,29 @@ window.switchAuthTab = function(tab) {
     document.getElementById('authError').style.display = 'none';
 };
 
+// Guest login
+window.continueAsGuest = async function() {
+    try {
+        const guestBtn = document.querySelector('.guest-btn');
+        guestBtn.disabled = true;
+        guestBtn.textContent = 'Joining as guest...';
+        
+        // Sign in anonymously with Firebase
+        const userCredential = await signInAnonymously(auth);
+        isGuestUser = true;
+        
+        console.log('Guest user created:', userCredential.user.uid);
+        // Auth state change will handle the rest
+    } catch (error) {
+        console.error('Guest login error:', error);
+        showAuthError('Failed to join as guest: ' + error.message);
+        
+        const guestBtn = document.querySelector('.guest-btn');
+        guestBtn.disabled = false;
+        guestBtn.textContent = 'Continue as Guest';
+    }
+};
+
 // Login form
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -498,6 +535,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         if (error.code === 'auth/user-not-found') msg = 'No account found with this email.';
         if (error.code === 'auth/wrong-password') msg = 'Incorrect password.';
         if (error.code === 'auth/invalid-email') msg = 'Invalid email address.';
+        if (error.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
         showAuthError(msg);
         
         const submitBtn = e.target.querySelector('.auth-submit');
@@ -538,7 +576,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
         
-        // Store username
+        // Store username - NOW PROPERLY STORES THE USERNAME THEY ENTERED
         await set(ref(db, `usernames/${uid}`), uname.toLowerCase());
         await set(ref(db, `userProfiles/${uid}`), {
             username: uname,
@@ -577,34 +615,47 @@ onAuthStateChanged(auth, async (user) => {
     if (user) {
         userId = user.uid;
         
-        // Load user profile
-        const profileSnap = await get(ref(db, `userProfiles/${userId}`));
-        if (profileSnap.exists()) {
-            const profile = profileSnap.val();
-            username = profile.username;
-            userColor = profile.color || userColor;
+        // Check if this is a guest user
+        if (user.isAnonymous) {
+            // Generate random guest number
+            const guestNumber = Math.floor(Math.random() * 10000);
+            username = `user#${guestNumber}`;
+            isGuestUser = true;
+            console.log('Guest user logged in:', username);
         } else {
-            // Try to get display name from Gmail account
-            if (user.displayName) {
-                username = user.displayName.split(' ')[0]; // Get first name
-            } else if (user.email) {
-                // Extract name from email (before @)
-                username = user.email.split('@')[0];
+            // Load user profile for registered users
+            const profileSnap = await get(ref(db, `userProfiles/${userId}`));
+            if (profileSnap.exists()) {
+                const profile = profileSnap.val();
+                username = profile.username;
+                userColor = profile.color || userColor;
             } else {
+                // Fallback (shouldn't happen with the fix)
                 username = `user${userId.slice(0,4)}`;
+                
+                // Save this as the user's profile
+                await set(ref(db, `userProfiles/${userId}`), {
+                    username: username,
+                    color: userColor,
+                    created: Date.now()
+                });
             }
-            
-            // Save this as the user's profile
-            await set(ref(db, `userProfiles/${userId}`), {
-                username: username,
-                color: userColor,
-                created: Date.now()
-            });
+            isGuestUser = false;
         }
         
         const myUsernameEl = document.getElementById('myUsername');
         myUsernameEl.textContent = username;
         myUsernameEl.style.color = userColor;
+        
+        // Disable chat input for guests
+        const chatInput = document.getElementById('chatInput');
+        if (isGuestUser) {
+            chatInput.disabled = true;
+            chatInput.placeholder = 'Login to chat...';
+        } else {
+            chatInput.disabled = false;
+            chatInput.placeholder = 'Message… (Enter to send)';
+        }
         
         // Hide auth modal, show app
         document.getElementById('authModal').style.display = 'none';
@@ -1058,7 +1109,7 @@ function startBoardListeners() {
         document.getElementById('strokeCount').textContent=strokeCount;
         const bEl=document.getElementById(currentBoard+'Count');
         if (bEl) bEl.textContent=strokeCount;
-        redrawCanvas();
+        redrawCanvas(); // REAL-TIME DRAWING UPDATES
     });
 }
 
@@ -1066,6 +1117,7 @@ function startBoardListeners() {
 const liveCursorEls = {};
 
 function initCursors() {
+    // Clean up old cursors
     Object.values(liveCursorEls).forEach(el=>el.remove());
     Object.keys(liveCursorEls).forEach(k=>delete liveCursorEls[k]);
 
@@ -1074,18 +1126,29 @@ function initCursors() {
 
     onValue(cursRef, snap => {
         const data=snap.val()||{};
+        
+        // Remove cursors for users that left
         Object.keys(liveCursorEls).forEach(uid => {
-            if (!data[uid]||uid===userId) { liveCursorEls[uid]?.remove(); delete liveCursorEls[uid]; }
+            if (!data[uid]||uid===userId) { 
+                liveCursorEls[uid]?.remove(); 
+                delete liveCursorEls[uid]; 
+            }
         });
+        
+        // Update/create cursors for all users
         Object.entries(data).forEach(([uid,info]) => {
-            if (uid===userId) return;
+            if (uid===userId) return; // Don't show our own cursor
+            
             if (!liveCursorEls[uid]) {
+                // Create new cursor element
                 const el=document.createElement('div');
                 el.className='live-cursor';
                 el.innerHTML=`<svg width="16" height="20" viewBox="0 0 16 20"><path d="M0 0 L0 16 L4 12 L7 19 L9 18 L6 11 L11 11 Z" fill="${info.color}" stroke="#fff" stroke-width="1"/></svg><div class="live-cursor-label" style="background:${info.color}">${info.username}</div>`;
                 document.getElementById('cursorOverlay').appendChild(el);
                 liveCursorEls[uid]=el;
             }
+            
+            // Update cursor position
             const cRect=canvas.getBoundingClientRect();
             const aRect=canvasArea.getBoundingClientRect();
             const sx=cRect.left-aRect.left + info.x*scale;
@@ -1099,7 +1162,7 @@ function initCursors() {
 let _lastCursor=0;
 canvas.addEventListener('mousemove', e => {
     const now=Date.now();
-    if (now-_lastCursor<40) return;
+    if (now-_lastCursor<40) return; // Throttle updates
     _lastCursor=now;
     const pos=getPos(e);
     set(ref(db,`cursors/${currentBoard}/${userId}`),{x:pos.x,y:pos.y,username,color:userColor,t:now});
@@ -1139,7 +1202,7 @@ function showVoteBanner(v,rid) {
     document.querySelector('.vote-banner')?.remove();
     const b=document.createElement('div');
     b.className='vote-banner';
-    b.innerHTML=`<div class="vote-header">🚨 Vote to kick?</div><div class="vote-reason">Reason: ${v.reason}</div><div class="vote-actions"><button class="vote-btn vote-yes" onclick="castVote('${rid}',true)">Kick</button><button class="vote-btn vote-no" onclick="castVote('${rid}',false)">No</button></div><div class="vote-status" id="voteStatus">Waiting…</div>`;
+    b.innerHTML=`<div class="vote-header">Vote to kick?</div><div class="vote-reason">Reason: ${v.reason}</div><div class="vote-actions"><button class="vote-btn vote-yes" onclick="castVote('${rid}',true)">Kick</button><button class="vote-btn vote-no" onclick="castVote('${rid}',false)">No</button></div><div class="vote-status" id="voteStatus">Waiting…</div>`;
     document.body.appendChild(b);
     setTimeout(()=>{b.remove();currentVoteId=null;},30000);
 }
@@ -1173,6 +1236,7 @@ window.toggleChat=function(){
     document.getElementById('chatToggleBtn').textContent=c.classList.contains('minimized')?'+':'−';
 };
 window.sendMsg=function(){
+    if (isGuestUser) return; // Guests can't send messages
     const inp=document.getElementById('chatInput'),msg=inp.value.trim();
     if(!msg) return;
     push(chatRef,{userId,username,color:userColor,message:censor(msg),timestamp:Date.now()});
@@ -1269,7 +1333,7 @@ async function initApp(){
     initCursors();
     ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
     applyTransform();
-    push(chatRef,{system:true,message:`✏️ ${username} joined`,timestamp:Date.now()});
+    push(chatRef,{system:true,message:`Welcome back, ${username}!`,timestamp:Date.now()});
 }
 </script>
 </body>
